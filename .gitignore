@@ -1,1 +1,3 @@
 .env
+*.gguf
+*.pyc

@@ -1,13 +1,11 @@
-fastapi>=0.100.0,<0.111.0 # Pinning minor version for stability
-uvicorn[standard]>=0.20.0 # Includes standard dependencies like watchfiles for reload
-llama-cpp-python>=0.2.50 # Check for latest compatible version
-pydantic>=2.0.0,<3.0.0
+fastapi>=0.100.0
+uvicorn[standard]>=0.23.0
+pydantic>=2.0.0
+pydantic-settings>=2.0.0
+llama-cpp-python>=0.2.50 # Or newer. Check compatibility!
 python-dotenv>=1.0.0
-slowapi>=0.1.8 # For rate limiting
+sse-starlette>=1.6.5     # For easy Server-Sent Events streaming
 
-# Optional: For potential future database integration for API keys/logging
-# sqlalchemy
-# databases[sqlite] # or postgresql, mysql etc.
-
-# Optional: For Hugging Face model download (if using that method in config.py)
-# huggingface_hub
+# Optional for Nice-to-Haves
+# slowapi>=0.1.8         # For rate limiting
+# typer>=0.9.0           # For CLI tool
