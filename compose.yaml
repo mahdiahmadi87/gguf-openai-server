@@ -1,0 +1,17 @@
+services:
+  python-llm_server:
+    build:
+      context: .
+    container_name: python-llm_server
+    restart: unless-stopped
+    init: true
+    # env_file: ./.env  # Uncomment if .env file exists
+    ports:
+      - "8000:8000"  # Expose FastAPI server
+    networks:
+      - backend
+    # No volumes needed as there are no databases or persistent data requirements
+
+networks:
+  backend:
+    driver: bridge

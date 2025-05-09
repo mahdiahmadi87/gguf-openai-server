@@ -23,7 +23,7 @@ class Settings(BaseSettings):
 
     MODELS: List[ModelInfo] = [
         # Example - Update with your actual models
-        # ModelInfo(model_id="gemma-3-4b", model_path="/home/mahdi/Documents/LLM/gguf-openai-server/models/gemma-3-4b-it-q4_0.gguf", n_gpu_layers=-1, is_multimodal=True), # Assuming Gemma 3 is multimodal
+        ModelInfo(model_id="gemma-3-4b", model_path="/home/mahdi/Documents/LLM/gguf-openai-server/models/gemma-3-4b-it-q4_0.gguf", n_gpu_layers=-1, is_multimodal=True), # Assuming Gemma 3 is multimodal
     ]
     # --- Security ---
     ALLOWED_API_KEYS_STR: Optional[str] = os.getenv("ALLOWED_API_KEYS", None)

@@ -1,0 +1,72 @@
+# 1. Version control
+.git/
+.gitignore
+
+# 2. Python cache and build artifacts
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.coverage
+
+# 3. Development and IDE files
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# 4. Build outputs and temp files
+dist/
+build/
+out/
+tmp/
+temp/
+*.tmp
+
+# 5. Test and debug files
+test/
+tests/
+debug/
+*.log
+
+# 6. Environment and secrets
+.env
+.env.*
+*.env
+*.pem
+*.key
+*.crt
+config.local.*
+*.local.yml
+.local/
+
+# 7. Documentation and project files
+docs/
+*.md
+README*
+
+# 8. Docker and compose files
+Dockerfile*
+docker-compose*
+
+# 9. Node.js, Go, Java (not detected, but for completeness)
+node_modules/
+npm-debug.log
+yarn-debug.log
+/vendor/
+*.test
+go.sum
+go.mod
+.go-cache/
+target/
+*.class
+.gradle/
+
+# 10. Miscellaneous
+models/*.gguf
+
+# Exclude placeholder files if not needed
+models/placeholder.txt
+
+# Exclude any other local or temporary files
