@@ -1,5 +1,6 @@
 # config/settings.py
 import os
+import json
 from typing import List, Dict, Any, Optional
 from pydantic_settings import BaseSettings
 from pydantic import Field
@@ -21,10 +22,35 @@ class Settings(BaseSettings):
     APP_NAME: str = "Local OpenAI-Compatible LLM Server"
     BASE_PATH: str = "/v1"
 
-    MODELS: List[ModelInfo] = [
-        # Example - Update with your actual models
-        ModelInfo(model_id="gemma-3-4b", model_path="/home/mahdi/Documents/LLM/gguf-openai-server/models/gemma-3-4b-it-q4_0.gguf", n_gpu_layers=-1, is_multimodal=True), # Assuming Gemma 3 is multimodal
-    ]
+    # --- Model Configuration ---
+    # Attempt to load from MODELS_CONFIG env var first, then fall back to hardcoded.
+    MODELS_CONFIG_STR: Optional[str] = os.getenv("MODELS_CONFIG", None)
+    MODELS: List[ModelInfo] = []
+
+    def __init__(self, **values: Any):
+        super().__init__(**values)
+        if self.MODELS_CONFIG_STR:
+            try:
+                models_data = json.loads(self.MODELS_CONFIG_STR)
+                self.MODELS = [ModelInfo(**data) for data in models_data]
+            except json.JSONDecodeError:
+                print(f"WARNING: Could not parse MODELS_CONFIG JSON: {self.MODELS_CONFIG_STR}")
+                self._initialize_default_models()
+            except Exception as e:
+                print(f"WARNING: Error initializing models from MODELS_CONFIG: {e}")
+                self._initialize_default_models()
+        else:
+            self._initialize_default_models()
+
+    def _initialize_default_models(self):
+        # This is where your previous hardcoded models would go as a fallback
+        # Or leave it empty if .env is the only way to define models
+        self.MODELS = [
+            # Example - Update with your actual models if you want a fallback
+            # ModelInfo(model_id="gemma-3-4b-default", model_path="/path/to/your/default/gemma-3-4b-it-q4_0.gguf", n_gpu_layers=-1, is_multimodal=True),
+        ]
+
+
     # --- Security ---
     ALLOWED_API_KEYS_STR: Optional[str] = os.getenv("ALLOWED_API_KEYS", None)
     @property

@@ -1,17 +1,17 @@
+# docker-compose.yaml
 services:
-  python-llm_server:
+  llm_server:
     build:
       context: .
-    container_name: python-llm_server
+      dockerfile: Dockerfile
+    container_name: llm_server
     restart: unless-stopped
-    init: true
-    # env_file: ./.env  # Uncomment if .env file exists
     ports:
-      - "8000:8000"  # Expose FastAPI server
-    networks:
-      - backend
-    # No volumes needed as there are no databases or persistent data requirements
+      - "8000:8000"
+    volumes:
+      - ./models:/app/models
+      - ./.env:/app/.env
 
-networks:
-  backend:
-    driver: bridge
+    environment:
+      MODEL_PATH: "/app/models/gemma-3-4b-it-q4_0.gguf"
+      ALLOWED_API_KEYS: "sk-local-key-dev"
