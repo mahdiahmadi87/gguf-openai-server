@@ -32,9 +32,9 @@ RUN python -m venv .venv && \
 FROM python:3.11-slim AS final
 
 # Install runtime dependencies (ensure libgomp present)
-RUN apt-get update --yes && \
-    apt-get install --yes --no-install-recommends libgomp1 && \
-    rm -rf /var/lib/apt/lists/*
+# RUN apt-get update --yes && \
+#     apt-get install --yes --no-install-recommends libgomp1 && \
+#     rm -rf /var/lib/apt/lists/*
 
 # Create non-root user
 RUN useradd -m appuser
@@ -48,7 +48,7 @@ COPY --from=builder /app/.venv /app/.venv
 COPY config/ ./config/
 COPY llm_server/ ./llm_server/
 COPY models/ ./models/
-COPY requirements.txt .
+# COPY requirements.txt .
 
 EXPOSE 8000
 CMD ["uvicorn", "llm_server.main:app", "--host", "0.0.0.0", "--port", "8000"]

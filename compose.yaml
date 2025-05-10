@@ -12,6 +12,5 @@ services:
       - ./models:/app/models
       - ./.env:/app/.env
 
-    environment:
-      MODEL_PATH: "/app/models/gemma-3-4b-it-q4_0.gguf"
-      ALLOWED_API_KEYS: "sk-local-key-dev"
+    env_file:
+      - .env

@@ -60,8 +60,8 @@ class Settings(BaseSettings):
         return []
 
     # --- Server Configuration ---
-    HOST: str = "0.0.0.0"
-    PORT: int = 8000
+    HOST: str = os.getenv("HOST")
+    PORT: int = os.getenv("PORT")
     LOG_LEVEL: str = "INFO"
     VERBOSE_LLAMA: bool = False
 
