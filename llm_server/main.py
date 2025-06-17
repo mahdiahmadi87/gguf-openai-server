@@ -25,13 +25,13 @@ app = FastAPI(
 
 # --- Middleware ---
 # Optional: Add CORS middleware if your API needs to be called from different domains (e.g., a web UI)
-# app.add_middleware(
-#     CORSMiddleware,
-#     allow_origins=["*"], # Or specify allowed origins: ["http://localhost:3000"]
-#     allow_credentials=True,
-#     allow_methods=["*"], # Allows all methods
-#     allow_headers=["*"], # Allows all headers
-# )
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"], # Or specify allowed origins: ["http://localhost:3000"]
+    allow_credentials=True,
+    allow_methods=["*"], # Allows all methods
+    allow_headers=["*"], # Allows all headers
+)
 
 # Optional: Add logging middleware (example)
 @app.middleware("http")
