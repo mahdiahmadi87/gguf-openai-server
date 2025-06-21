@@ -32,9 +32,9 @@ RUN python -m venv .venv && \
 FROM python:3.11-slim AS final
 
 # Install runtime dependencies (ensure libgomp present)
-# RUN apt-get update --yes && \
-#     apt-get install --yes --no-install-recommends libgomp1 && \
-#     rm -rf /var/lib/apt/lists/*
+RUN apt-get update --yes && \
+    apt-get install --yes --no-install-recommends libgomp1 && \
+    rm -rf /var/lib/apt/lists/*
 
 # Create non-root user
 RUN useradd -m appuser
