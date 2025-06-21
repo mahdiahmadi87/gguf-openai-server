@@ -12,7 +12,7 @@ class ModelInfo(BaseSettings):
     """Configuration for a single GGUF model."""
     model_id: str
     model_path: str
-    n_gpu_layers: int = -1
+    n_gpu_layers: int = 10
     n_ctx: int = 65536
     is_multimodal: bool = False
     # Add other Llama() constructor args here if needed
