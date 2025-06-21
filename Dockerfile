@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1.4
 
 # Base stage for common setup
-FROM python:3.11-slim AS base
+FROM python:3.12-slim AS base
 
 # Set environment variables for Python
 ENV PYTHONDONTWRITEBYTECODE=1 \
@@ -29,7 +29,7 @@ RUN python -m venv .venv && \
     .venv/bin/pip install -r requirements.txt
 
 # --- Final stage ---
-FROM python:3.11-slim AS final
+FROM python:3.12-slim AS final
 
 # Install runtime dependencies (ensure libgomp present)
 RUN apt-get update --yes && \
