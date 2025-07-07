@@ -1,26 +1,37 @@
 import logging
+import os
 import time 
 from fastapi import FastAPI, Request, status
 from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware # Optional: If needed for frontend access
+from contextlib import asynccontextmanager # <-- Import asynccontextmanager
 
 from config.settings import settings
-from llm_server.api.v1 import chat_completions, completions, models
+from llm_server.core.api_key_manager import load_api_keys
+from llm_server.api.v1 import chat_completions, completions, models, admin # <-- Import admin
 
 # --- Logging Setup ---
 logging.basicConfig(level=settings.LOG_LEVEL.upper())
 logger = logging.getLogger(settings.APP_NAME)
 logger.info("Starting logger...")
 
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # --- Code to run on startup ---
+    logger.info("Server is starting up...")
+    # Load user API keys from the persistent file
+    load_api_keys()
+    yield
+    # --- Code to run on shutdown (if any) ---
+    logger.info("Server is shutting down...")
+
 
 # --- FastAPI App Initialization ---
 app = FastAPI(
     title=settings.APP_NAME,
-    version="1.0.0", # Or your app version
-    # Define root path if deploying behind reverse proxy with path stripping
-    # root_path="/api" # Example if proxy strips /api
-    # openapi_prefix=settings.BASE_PATH # Helps Swagger UI find the spec correctly
+    version="1.0.0",
+    lifespan=lifespan # <-- Use the new lifespan manager
 )
 
 # --- Middleware ---
@@ -66,6 +77,7 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
 # --- Routers ---
 # Include routers for different API versions/sections
 # The prefix ensures all routes in these modules start with /v1
+app.include_router(admin.router, prefix=settings.BASE_PATH)
 app.include_router(models.router, prefix=settings.BASE_PATH)
 app.include_router(completions.router, prefix=settings.BASE_PATH)
 app.include_router(chat_completions.router, prefix=settings.BASE_PATH)

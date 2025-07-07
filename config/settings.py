@@ -51,13 +51,17 @@ class Settings(BaseSettings):
         ]
 
 
-    # --- Security ---
-    ALLOWED_API_KEYS_STR: Optional[str] = os.getenv("ALLOWED_API_KEYS", None)
-    @property
-    def ALLOWED_API_KEYS(self) -> List[str]:
-        if self.ALLOWED_API_KEYS_STR:
-            return [key.strip() for key in self.ALLOWED_API_KEYS_STR.split(',')]
-        return []
+    # --- NEW: Admin & Key Management Configuration ---
+    # The master key to protect admin endpoints. Must be set in .env
+    ADMIN_API_KEY: str
+
+    # The file where user API keys will be stored persistently.
+    API_KEYS_FILE: str = "api_keys.json"
+    # --- END NEW ---
+
+    # --- REMOVED ---
+    # ALLOWED_API_KEYS_STR and its property are no longer used.
+    # --- END REMOVED ---
 
     # --- Server Configuration ---
     HOST: str = os.getenv("HOST")
@@ -70,17 +74,14 @@ class Settings(BaseSettings):
         env_file_encoding = 'utf-8'
         extra = 'ignore'
 
-# --- Instantiate settings ---  <-*** ADD THIS LINE ***
 settings = Settings()
 # ----------------------------
 
 # --- Model Path Validation & Map Creation ---
 _MODEL_MAP: Dict[str, ModelInfo] = {}
-# Now 'settings.MODELS' can be accessed safely
 for model_info in settings.MODELS:
     if not os.path.exists(model_info.model_path):
         print(f"WARNING: Model path not found for '{model_info.model_id}': {model_info.model_path}")
-        # Decide whether to raise an error or just warn
     else:
         _MODEL_MAP[model_info.model_id] = model_info
 
@@ -92,17 +93,16 @@ def get_available_model_ids() -> List[str]:
 
 # --- Print loaded settings for verification ---
 print("--- Server Configuration ---")
-print(f"Host: {settings.HOST}") # Access instance here
-print(f"Port: {settings.PORT}") # Access instance here
-print(f"Allowed API Keys: {'Loaded' if settings.ALLOWED_API_KEYS else 'None'}") # Access instance here
+print(f"Host: {settings.HOST}")
+print(f"Port: {settings.PORT}")
+print(f"Admin API Key: {'Loaded' if settings.ADMIN_API_KEY else 'NOT SET! The server will fail to start.'}") # New print
 print("Configured Models:")
 if _MODEL_MAP:
     for model_id, info in _MODEL_MAP.items():
-        # Access attributes from the 'info' object (ModelInfo instance)
         print(f"  - ID: {model_id}, Path: {info.model_path}, GPU Layers: {info.n_gpu_layers}, Context: {info.n_ctx}, Multimodal: {info.is_multimodal}")
 else:
     print("  No valid models configured or found.")
 print("--------------------------")
 
 if not _MODEL_MAP:
-    print("ERROR: No valid models configured. Please check your .env file or settings.py and ensure model paths are correct.")
+    print("ERROR: No valid models configured.")
