@@ -70,3 +70,4 @@ models/*.gguf
 models/placeholder.txt
 
 # Exclude any other local or temporary files
+api_keys.json

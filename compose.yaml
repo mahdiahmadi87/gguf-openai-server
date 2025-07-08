@@ -11,6 +11,7 @@ services:
     volumes:
       - ./models:/app/models
       - ./.env:/app/.env
+      - ./api_keys.json:/app/api_keys.json
 
     env_file:
       - .env
