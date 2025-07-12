@@ -1,39 +1,46 @@
 # syntax=docker/dockerfile:1.4
 
-# Base stage for common setup
-FROM python:3.12-slim AS base
+########################################################################
+# Builder stage: build llama-cpp-python with CUDA support and install deps
+########################################################################
+FROM nvidia/cuda:12.3.1-devel-ubuntu22.04 AS builder
 
-# Set environment variables for Python
-ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1
-
-WORKDIR /app
-
-# --- Builder stage ---
-FROM base AS builder
-
-# Install build-time dependencies (including libgomp for llama_cpp compilation)
+# Install system build tools and Python
 RUN apt-get update --yes && \
-    apt-get install --yes --no-install-recommends \
+    DEBIAN_FRONTEND=noninteractive apt-get install --yes --no-install-recommends \
         build-essential \
-        libopenblas-dev \
-        libstdc++6 \
+        cmake \
+        git \
         libgomp1 \
-        git && \
+        libopenblas-dev \
+        python3.12 \
+        python3.12-venv \
+        python3.12-dev && \
     rm -rf /var/lib/apt/lists/*
 
-# Copy requirements and install Python deps
-COPY requirements.txt ./
-RUN python -m venv .venv && \
-    .venv/bin/pip install --upgrade pip && \
-    .venv/bin/pip install -r requirements.txt
+WORKDIR /opt/venv
+RUN python3.12 -m venv . && \
+    . /opt/venv/bin/activate && \
+    pip install --upgrade pip
 
-# --- Final stage ---
-FROM python:3.12-slim AS final
+# Install llama-cpp-python with CUDA cuBLAS support
+RUN . /opt/venv/bin/activate && \
+    CMAKE_ARGS="-DLLAMA_CUBLAS=on" FORCE_CMAKE=1 pip install llama-cpp-python --no-cache-dir
 
-# Install runtime dependencies (ensure libgomp present)
+# Copy and install Python requirements (excluding llama-cpp-python)
+COPY requirements.txt /app/requirements.txt
+RUN . /opt/venv/bin/activate && \
+    pip install --no-cache-dir -r /app/requirements.txt
+
+########################################################################
+# Final stage: runtime image
+########################################################################
+FROM nvidia/cuda:12.3.1-runtime-ubuntu22.04 AS final
+
+# Install runtime dependencies
 RUN apt-get update --yes && \
-    apt-get install --yes --no-install-recommends libgomp1 && \
+    DEBIAN_FRONTEND=noninteractive apt-get install --yes --no-install-recommends \
+        libgomp1 && \
     rm -rf /var/lib/apt/lists/*
 
 # Create non-root user
@@ -41,14 +48,13 @@ RUN useradd -m appuser
 USER appuser
 
 WORKDIR /app
-ENV PATH="/app/.venv/bin:$PATH"
+ENV PATH="/opt/venv/bin:$PATH"
 
-# Copy venv and app code
-COPY --from=builder /app/.venv /app/.venv
+# Copy virtualenv and application code
+COPY --from=builder /opt/venv /opt/venv
 COPY config/ ./config/
 COPY llm_server/ ./llm_server/
 COPY models/ ./models/
-# COPY requirements.txt .
 
 EXPOSE 8000
-CMD ["uvicorn", "llm_server.main:app", "--host", "0.0.0.0", "--port", "8000"]
+ENTRYPOINT ["uvicorn", "llm_server.main:app", "--host", "0.0.0.0", "--port", "8000"]
