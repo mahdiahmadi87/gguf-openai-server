@@ -1,42 +1,48 @@
-# syntax=docker/dockerfile:1.4
+# --- Base: شامل CUDA + ابزارهای بیلد ---
+FROM nvidia/cuda:12.2.2-devel-ubuntu22.04 AS base
 
-FROM python:3.12-slim as builder
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
 
-# Install build dependencies
+WORKDIR /app
+
+# --- Builder Stage ---
+FROM base AS builder
+
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential cmake git libopenblas-dev libgomp1 && \
-    rm -rf /var/lib/apt/lists/*
+    build-essential \
+    cmake \
+    git \
+    libopenblas-dev \
+    libgomp1 \
+    python3-venv \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
 
-WORKDIR /app
+COPY requirements.txt ./
+RUN python3 -m venv .venv && \
+    .venv/bin/pip install --upgrade pip
 
-# Setup venv
-RUN python -m venv /opt/venv
-ENV PATH="/opt/venv/bin:$PATH"
+# نصب llama-cpp-python با پشتیبانی GPU
+ENV CMAKE_ARGS="-DGGML_CUDA=on"
+ENV FORCE_CMAKE=1
+RUN .venv/bin/pip install --no-cache-dir llama-cpp-python --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cu122
+RUN .venv/bin/pip install -r requirements.txt
 
-# Install llama-cpp-python with cuBLAS (GPU support)
-RUN CMAKE_ARGS="-DLLAMA_CUBLAS=on" FORCE_CMAKE=1 pip install llama-cpp-python --no-cache-dir
+# --- Final Stage ---
+FROM nvidia/cuda:12.2.2-runtime-ubuntu22.04 AS final
 
-# Install your project dependencies
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libgomp1 \
+    && rm -rf /var/lib/apt/lists/*
 
-# ----------------------
-# Final runtime image
-# ----------------------
-FROM python:3.12-slim as runtime
-
-# Install runtime libs (libgomp is needed by llama.cpp)
-RUN apt-get update && apt-get install -y --no-install-recommends libgomp1 && \
-    rm -rf /var/lib/apt/lists/*
-
-WORKDIR /app
-ENV PATH="/opt/venv/bin:$PATH"
-
-# Optional non-root user
 RUN useradd -m appuser
 USER appuser
 
-COPY --from=builder /opt/venv /opt/venv
+WORKDIR /app
+ENV PATH="/app/.venv/bin:$PATH"
+
+COPY --from=builder /app/.venv /app/.venv
 COPY config/ ./config/
 COPY llm_server/ ./llm_server/
 COPY models/ ./models/

@@ -1,4 +1,5 @@
-# docker-compose.yaml
+version: "3.9"
+
 services:
   llm_server:
     build:
@@ -15,3 +16,13 @@ services:
 
     env_file:
       - .env
+
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+    runtime: nvidia
