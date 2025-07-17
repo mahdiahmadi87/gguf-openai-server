@@ -23,6 +23,11 @@ COPY requirements.txt ./
 RUN python3 -m venv .venv && \
     .venv/bin/pip install --upgrade pip
 
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libcuda1 \
+    nvidia-driver \
+    && rm -rf /var/lib/apt/lists/*
+
 # نصب llama-cpp-python با پشتیبانی GPU
 ENV CMAKE_ARGS="-DGGML_CUDA=on"
 ENV FORCE_CMAKE=1
