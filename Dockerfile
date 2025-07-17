@@ -26,7 +26,7 @@ RUN python3 -m venv .venv && \
 # نصب llama-cpp-python با پشتیبانی GPU
 ENV CMAKE_ARGS="-DGGML_CUDA=on"
 ENV FORCE_CMAKE=1
-RUN .venv/bin/pip install --no-cache-dir llama-cpp-python --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cu122
+RUN .venv/bin/pip install --no-cache-dir llama-cpp-python --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cu128
 RUN .venv/bin/pip install -r requirements.txt
 
 # --- Final Stage ---
