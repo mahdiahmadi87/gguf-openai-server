@@ -24,11 +24,9 @@ RUN python3 -m venv .venv && \
     .venv/bin/pip install --upgrade pip
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    nvidia-cuda-toolkit \
-    libcuda1-535 \
-    nvidia-driver-535 \
+    libcuda1 \
+    nvidia-driver \
     && rm -rf /var/lib/apt/lists/*
-
 
 # نصب llama-cpp-python با پشتیبانی GPU
 ENV CMAKE_ARGS="-DGGML_CUDA=on"
