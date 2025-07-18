@@ -9,15 +9,18 @@ WORKDIR /app
 # --- Builder Stage ---
 FROM base AS builder
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential \
-    cmake \
-    git \
-    libopenblas-dev \
-    libgomp1 \
-    python3-venv \
-    curl \
-    && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y software-properties-common && \
+    add-apt-repository universe && \
+    apt-get update && \
+    apt-get install -y --no-install-recommends \
+        build-essential \
+        cmake \
+        git \
+        libopenblas-dev \
+        libgomp1 \
+        python3-venv \
+        curl && \
+    rm -rf /var/lib/apt/lists/*   
 
 COPY requirements.txt ./
 RUN python3 -m venv .venv && \
