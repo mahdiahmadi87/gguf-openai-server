@@ -36,7 +36,7 @@ FROM nvidia/cuda:12.2.2-runtime-ubuntu22.04 AS final
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libgomp1 \
-    python3 python3-venv python3-pip libgomp1 && \
+    python3 python3-venv python3-pip libgomp1 \
     && rm -rf /var/lib/apt/lists/*
 
 RUN useradd -m appuser
