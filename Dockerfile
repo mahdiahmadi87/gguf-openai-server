@@ -20,7 +20,19 @@ RUN apt-get update --yes && \
         libstdc++6 \
         libgomp1 \
         git && \
+        cmake \
+        curl \
+        wget \
+        gnupg \
     rm -rf /var/lib/apt/lists/*
+
+RUN wget https://developer.download.nvidia.com/compute/cuda/repos/debian12/x86_64/cuda-keyring_1.1-1_all.deb && \
+    dpkg -i cuda-keyring_1.1-1_all.deb && \
+    apt-get update && \
+    apt-get install -y cuda-toolkit-12-8
+
+ENV PATH="/usr/local/cuda/bin:${PATH}"
+ENV CUDAToolkit_ROOT="/usr/local/cuda"
 
 # Copy requirements and install Python deps
 COPY requirements.txt ./
