@@ -1,57 +1,54 @@
-# --- Base: شامل CUDA + ابزارهای بیلد ---
-FROM nvidia/cuda:12.2.2-devel-ubuntu22.04 AS base
+# syntax=docker/dockerfile:1.4
 
+# Base stage for common setup
+FROM python:3.12-slim AS base
+
+# Set environment variables for Python
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
 
 WORKDIR /app
 
-# --- Builder Stage ---
+# --- Builder stage ---
 FROM base AS builder
 
-RUN apt-get update && apt-get install -y software-properties-common && \
-    add-apt-repository universe && \
-    apt-get update && \
-    apt-get install -y --no-install-recommends \
+# Install build-time dependencies (including libgomp for llama_cpp compilation)
+RUN apt-get update --yes && \
+    apt-get install --yes --no-install-recommends \
         build-essential \
-        cmake \
-        git \
         libopenblas-dev \
+        libstdc++6 \
         libgomp1 \
-        python3-venv \
-        curl && \
-    rm -rf /var/lib/apt/lists/*   
+        git && \
+    rm -rf /var/lib/apt/lists/*
 
+# Copy requirements and install Python deps
 COPY requirements.txt ./
-RUN python3 -m venv .venv && \
-    .venv/bin/pip install --upgrade pip
+RUN python -m venv .venv && \
+    .venv/bin/pip install --upgrade pip && \
+    .venv/bin/pip install -r requirements.txt
 
-RUN ln -s /usr/local/cuda/lib64/stubs/libcuda.so /usr/lib/x86_64-linux-gnu/libcuda.so.1
+# --- Final stage ---
+FROM python:3.12-slim AS final
 
-# نصب llama-cpp-python با پشتیبانی GPU
-ENV CMAKE_ARGS="-DGGML_CUDA=on"
-ENV FORCE_CMAKE=1
-RUN .venv/bin/pip install --no-cache-dir llama-cpp-python --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cu128
-RUN .venv/bin/pip install -r requirements.txt
+# Install runtime dependencies (ensure libgomp present)
+RUN apt-get update --yes && \
+    apt-get install --yes --no-install-recommends libgomp1 && \
+    rm -rf /var/lib/apt/lists/*
 
-# --- Final Stage ---
-FROM nvidia/cuda:12.2.2-runtime-ubuntu22.04 AS final
-
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    libgomp1 \
-    python3 python3-venv python3-pip libgomp1 \
-    && rm -rf /var/lib/apt/lists/*
-
+# Create non-root user
 RUN useradd -m appuser
 USER appuser
 
 WORKDIR /app
 ENV PATH="/app/.venv/bin:$PATH"
 
+# Copy venv and app code
 COPY --from=builder /app/.venv /app/.venv
 COPY config/ ./config/
 COPY llm_server/ ./llm_server/
 COPY models/ ./models/
+# COPY requirements.txt .
 
 EXPOSE 8000
 CMD ["uvicorn", "llm_server.main:app", "--host", "0.0.0.0", "--port", "8000"]
