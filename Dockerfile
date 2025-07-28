@@ -13,18 +13,18 @@ WORKDIR /app
 FROM base AS builder
 
 # Install build-time dependencies (including libgomp for llama_cpp compilation)
-RUN apt-get update --yes && \
-    apt-get install --yes --no-install-recommends \
-        build-essential \
-        libopenblas-dev \
-        libstdc++6 \
-        libgomp1 \
-        git && \
-        cmake \
-        curl \
-        wget \
-        gnupg \
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    libopenblas-dev \
+    libstdc++6 \
+    libgomp1 \
+    git \
+    cmake \
+    curl \
+    wget \
+    gnupg && \
     rm -rf /var/lib/apt/lists/*
+
 
 RUN wget https://developer.download.nvidia.com/compute/cuda/repos/debian12/x86_64/cuda-keyring_1.1-1_all.deb && \
     dpkg -i cuda-keyring_1.1-1_all.deb && \
