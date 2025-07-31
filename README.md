@@ -3,6 +3,8 @@
 
 **A lightweight, OpenAI-compatible server for running GGUF models locally or with Docker.**
 
+## THIS IS CPU VERSION!
+
 ---
 
 ## Features
