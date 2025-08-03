@@ -1,7 +1,28 @@
 import threading
-from typing import Dict, Optional
+import os
+import multiprocessing
+from typing import Dict, Optional, Set
 from llama_cpp import Llama
 from config.settings import settings, ModelInfo, get_model_config
+
+def set_cpu_affinity(cpu_ids: Set[int]):
+    """Set CPU affinity for the current process."""
+    try:
+        # Get the current process ID
+        pid = os.getpid()
+        
+        # On Linux, we can use os.sched_setaffinity
+        if hasattr(os, 'sched_setaffinity'):
+            os.sched_setaffinity(pid, cpu_ids)
+        else:
+            # Fallback to using taskset via subprocess on Unix-like systems
+            import subprocess
+            cpu_list = ','.join(map(str, cpu_ids))
+            subprocess.run(['taskset', '-pc', cpu_list, str(pid)], check=True)
+            
+    except Exception as e:
+        print(f"Warning: Could not set CPU affinity: {e}")
+        # Continue execution even if setting affinity fails
 
 # Thread-safe cache for loaded models
 loaded_models: Dict[str, Llama] = {}
@@ -36,11 +57,21 @@ def get_llama_instance(model_id: str) -> Llama:
 
         print(f"Loading model '{model_id}' from {model_config.model_path}...")
         try:
+            # Calculate CPU core IDs for this model instance
+            start_core = model_config.thread_offset
+            num_threads = model_config.n_threads
+            cpu_cores = set(range(start_core, start_core + num_threads))
+            
+            # Set CPU affinity for the current thread/process
+            set_cpu_affinity(cpu_cores)
+            
+            # Create the Llama instance with the specified number of threads
             llama_instance = Llama(
                 model_path=model_config.model_path,
                 n_gpu_layers=model_config.n_gpu_layers,
                 n_ctx=model_config.n_ctx,
                 verbose=settings.VERBOSE_LLAMA,
+                n_threads=model_config.n_threads,  # Set number of threads explicitly
                 # Add other relevant Llama params from model_config if defined
                 # e.g., n_batch=model_config.n_batch
             )

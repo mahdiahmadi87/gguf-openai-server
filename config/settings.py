@@ -14,6 +14,8 @@ class ModelInfo(BaseSettings):
     model_path: str
     n_gpu_layers: int = 10
     n_ctx: int = 65536
+    n_threads: int = 4  # Number of CPU threads to use for this model
+    thread_offset: int = 0  # Starting CPU core number for this model
     is_multimodal: bool = False
     # Add other Llama() constructor args here if needed
 
