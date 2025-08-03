@@ -1,5 +1,4 @@
-version: "3.9"
-
+# docker-compose.yaml
 services:
   llm_server:
     build:
