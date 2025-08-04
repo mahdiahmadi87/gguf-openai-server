@@ -3,6 +3,7 @@ import time
 import json
 import base64 # <-- Import base64
 import re     # <-- Import re
+from asyncio import anext
 from fastapi import APIRouter, Depends, HTTPException, status, Request
 from sse_starlette.sse import EventSourceResponse
 from typing import AsyncGenerator, List, Dict, Any, Union, Optional # <-- Add Dict, Any, Union, Optional
@@ -13,10 +14,10 @@ from llm_server.schemas.chat import (
     ChatCompletionStreamResponse, ChatCompletionStreamChoice, ChatCompletionStreamDelta
 )
 from llm_server.schemas.common import UsageInfo
-from llm_server.api.deps import get_authenticated_user, validate_model_id, get_model_instance_from_id
-# --- Import get_model_config from settings ---
+from llm_server.api.deps import get_authenticated_user, validate_model_id
 from config.settings import get_model_config, ModelInfo
 from llm_server.core.utils import generate_id
+from llm_server.core.llm_manager import dynamic_model_manager
 from llama_cpp import Llama
 
 # --- Add logging ---
@@ -216,7 +217,9 @@ async def _chat_completion_stream_generator(
 async def create_chat_completion(
     request: ChatCompletionRequest,
 ):
-    """Creates a chat completion, handling text and image inputs."""
+    """
+    Creates a chat completion by dynamically spawning a model worker process.
+    """
     model_config = get_model_config(request.model)
     if not model_config:
         raise HTTPException(
@@ -225,27 +228,34 @@ async def create_chat_completion(
         )
 
     model_id = validate_model_id(request.model)
-    # The 'llama' object is now our async client to the worker process
-    llama = get_model_instance_from_id(model_id)
 
     if not request.messages:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Messages list cannot be empty.")
 
     try:
         llama_params = _map_chat_request_to_llama_params(request, model_config)
+        llama_params["stream"] = request.stream
+
+        # The dynamic manager handles the entire lifecycle of the request
+        stream = dynamic_model_manager.handle_inference_request(
+            model_id=model_id,
+            llama_params=llama_params
+        )
 
         if request.stream:
             request_id = generate_id("chatcmpl")
-            # Get the async generator from our client
-            stream = await llama.create_chat_completion(**llama_params, stream=True)
-            # Pass it to the SSE generator
             return EventSourceResponse(
                 _chat_completion_stream_generator(model_id, stream, request_id),
                 media_type="text/event-stream"
             )
         else:
-            # Await the non-streaming call
-            output = await llama.create_chat_completion(**llama_params, stream=False)
+            # For non-streaming, get the single result from the async generator
+            output = await anext(stream)
+            if "error" in output:
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail=f"Error from model worker: {output['error']}"
+                )
             response = _parse_chat_completion_output(output, model_id, request)
             return response
 
