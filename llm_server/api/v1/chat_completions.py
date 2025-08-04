@@ -13,10 +13,10 @@ from llm_server.schemas.chat import (
     ChatCompletionStreamResponse, ChatCompletionStreamChoice, ChatCompletionStreamDelta
 )
 from llm_server.schemas.common import UsageInfo
-from llm_server.api.deps import get_authenticated_user, validate_model_id, get_model_instance_from_id
-# --- Import get_model_config from settings ---
+from llm_server.api.deps import get_authenticated_user, validate_model_id
 from config.settings import get_model_config, ModelInfo
 from llm_server.core.utils import generate_id
+from llm_server.core.llm_manager import dynamic_model_manager
 from llama_cpp import Llama
 
 # --- Add logging ---
@@ -148,167 +148,114 @@ def _parse_chat_completion_output(output: dict, model_id: str, request: ChatComp
     )
 
 
-# --- Keep _chat_completion_stream_generator the same ---
-# (It yields JSON payloads based on llama-cpp-python output, which should still be text deltas)
 async def _chat_completion_stream_generator(
     model_id: str,
-    llama_instance: Llama,
-    llama_params: dict,
+    stream: AsyncGenerator[Dict, None],
     request_id: str
 ) -> AsyncGenerator[str, None]:
-     # ... (implementation remains the same, including preamble and GeneratorExit handling) ...
+    """
+    Yields formatted server-sent events from an async stream of chunks.
+    """
     completion_start_time = int(time.time())
-    logger.debug(f"[{request_id}] Chat stream generator started.")
-    exited_prematurely = False # Flag to track if GeneratorExit was caught
+    logger.debug(f"[{request_id}] Stream generator started.")
 
-    # --- PREAMBLE ---
-    initial_chunk = ChatCompletionStreamResponse(
-        id=request_id, object="chat.completion.chunk", created=completion_start_time, model=model_id,
-        choices=[ChatCompletionStreamChoice(index=0, delta={}, finish_reason=None)]
-    )
-    initial_payload = initial_chunk.model_dump_json(exclude_unset=True)
-    logger.info(f"[{request_id}] Yielding PREAMBLE SSE chunk payload: {initial_payload}")
     try:
-        yield initial_payload
-    except GeneratorExit:
-        logger.warning(f"[{request_id}] GeneratorExit caught after preamble yield...")
-        exited_prematurely = True
-        return
-    except Exception as e:
-        logger.error(f"[{request_id}] Error yielding preamble: {e}", exc_info=True)
-        exited_prematurely = True
-        return
-    # --- END PREAMBLE ---
-
-    # --- Core Streaming Logic ---
-    stream = None
-    try:
-        logger.debug(f"[{request_id}] Starting llama_cpp stream loop...")
-        stream = llama_instance.create_chat_completion(**llama_params, stream=True)
         i = 0
-        for output_chunk in stream:
-            try:
-                 # ... (Logging first chunk etc.) ...
-                if i == 0:
-                    logger.info(f"[{request_id}] !!! FIRST *REAL* RAW llama_cpp stream chunk: {output_chunk!r}")
+        async for output_chunk in stream:
+            # The worker process now sends parsed dictionaries.
+            # We just need to format them into the SSE response schema.
+            if i == 0:
+                logger.info(f"[{request_id}] First stream chunk received: {output_chunk!r}")
 
-                logger.debug(f"[{request_id}] Processing raw chunk {i}: {output_chunk!r}")
-
-                # --- Parse Chunk ---
-                choices = []
-                raw_choices = output_chunk.get("choices") if isinstance(output_chunk, dict) else None
-                if isinstance(raw_choices, list):
-                    for choice_data in raw_choices:
-                        # Parsing logic remains the same as before (expects text delta)
-                        delta_data = choice_data.get("delta", {})
-                        finish_reason = choice_data.get("finish_reason")
-                        delta = ChatCompletionStreamDelta(
-                            role=delta_data.get("role"), content=delta_data.get("content"),
-                        )
-                        stream_choice = ChatCompletionStreamChoice(
-                            index=choice_data.get("index", 0), delta=delta, finish_reason=finish_reason
-                        )
-                        choices.append(stream_choice)
-                    logger.debug(f"[{request_id}] Parsed choices for chunk {i}: {choices!r}")
-                else:
-                    logger.warning(f"[{request_id}] Chunk {i} had no valid choices list: {output_chunk!r}")
-                    choices = []
-
-                # --- Yield Chunk Payload ---
-                if choices:
-                    chunk = ChatCompletionStreamResponse(
-                        id=request_id, object="chat.completion.chunk", created=completion_start_time,
-                        model=model_id, choices=choices, usage=None,
-                        system_fingerprint=output_chunk.get("system_fingerprint")
+            choices = []
+            if "choices" in output_chunk and isinstance(output_chunk["choices"], list):
+                for choice_data in output_chunk["choices"]:
+                    delta_data = choice_data.get("delta", {})
+                    delta = ChatCompletionStreamDelta(
+                        role=delta_data.get("role"),
+                        content=delta_data.get("content")
                     )
-                    json_payload = chunk.model_dump_json(exclude_unset=True)
-                    logger.info(f"[{request_id}] >>> Yielding SSE chunk {i} payload: {json_payload}")
-                    yield json_payload
-                    logger.debug(f"[{request_id}] Yielded SSE chunk {i} successfully.")
-                else:
-                    logger.warning(f"[{request_id}] Did not yield chunk {i} (no choices parsed): {output_chunk!r}")
+                    stream_choice = ChatCompletionStreamChoice(
+                        index=choice_data.get("index", 0),
+                        delta=delta,
+                        finish_reason=choice_data.get("finish_reason")
+                    )
+                    choices.append(stream_choice)
 
+            if not choices:
+                continue
 
-                i += 1
-            except GeneratorExit:
-                 logger.warning(f"[{request_id}] GeneratorExit caught mid-stream during chunk {i}...")
-                 exited_prematurely = True
-                 return
-            except Exception as e:
-                tb_str = traceback.format_exc()
-                logger.error(f"[{request_id}] Error processing chunk {i}: {e}\nTRACEBACK:\n{tb_str}")
-                exited_prematurely = True
-                return
-        # --- End of loop ---
-        logger.info(f"[{request_id}] Stream loop finished normally after {i} chunks.")
+            chunk_response = ChatCompletionStreamResponse(
+                id=request_id,
+                object="chat.completion.chunk",
+                created=completion_start_time,
+                model=model_id,
+                choices=choices,
+                system_fingerprint=output_chunk.get("system_fingerprint")
+            )
+            json_payload = chunk_response.model_dump_json(exclude_unset=True)
+            yield json_payload
+            i += 1
 
-    except GeneratorExit:
-         logger.warning(f"[{request_id}] GeneratorExit caught outside the main chunk processing loop...")
-         exited_prematurely = True
-         return
     except Exception as e:
         tb_str = traceback.format_exc()
-        logger.error(f"[{request_id}] Error creating or iterating llama_cpp stream: {e}\nTRACEBACK:\n{tb_str}")
-        exited_prematurely = True
-
-    # --- Finally Block ---
+        logger.error(f"[{request_id}] Error in stream generator: {e}\n{tb_str}")
+        # Yield an error message if possible
+        error_payload = {"error": f"An error occurred during streaming: {e}"}
+        yield json.dumps(error_payload)
     finally:
-        if not exited_prematurely:
-            logger.info(f"[{request_id}] >>> Yielding [DONE]")
-            try:
-                yield "[DONE]"
-                logger.debug(f"[{request_id}] Yielded [DONE] successfully.")
-            except GeneratorExit:
-                 logger.warning(f"[{request_id}] GeneratorExit caught while yielding [DONE]...")
-            except Exception as e:
-                 logger.error(f"[{request_id}] Error yielding [DONE]: {e}", exc_info=True)
-        else:
-             logger.info(f"[{request_id}] Suppressing [DONE] yield because generator exited prematurely.")
+        # Signal the end of the stream to the client
+        yield "[DONE]"
+        logger.info(f"[{request_id}] Stream generator finished, sent [DONE].")
 
-
-# --- Updated Endpoint ---
 @router.post(
     "/chat/completions",
     response_model=ChatCompletionResponse,
     dependencies=[Depends(get_authenticated_user)]
 )
 async def create_chat_completion(
-    request: ChatCompletionRequest, # Uses updated schema
-    # request_object: Request # Optional
+    request: ChatCompletionRequest,
 ):
-    """Creates a chat completion, handling text and image inputs."""
-    # --- Get model config FIRST to check multimodal support ---
+    """
+    Creates a chat completion by dynamically spawning a model worker process.
+    """
     model_config = get_model_config(request.model)
     if not model_config:
-         # Should be caught by validate_model_id called implicitly before,
-         # but check again for safety before accessing is_multimodal
-          raise HTTPException(
+        raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Model configuration not found for '{request.model}'."
         )
 
-    # --- Now validate ID and get instance ---
-    model_id = validate_model_id(request.model) # Still useful validation
-    llama = get_model_instance_from_id(model_id) # Gets the instance
+    model_id = validate_model_id(request.model)
 
-    # --- Request parameter validation ---
-    if request.n is not None and request.n > 1:
-         print(f"Warning: Requesting n={request.n} choices...")
-    if not request.messages or len(request.messages) == 0:
+    if not request.messages:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Messages list cannot be empty.")
 
     try:
-        # --- Map request, passing model_config for multimodal checks ---
         llama_params = _map_chat_request_to_llama_params(request, model_config)
+        llama_params["stream"] = request.stream
+
+        # The dynamic manager handles the entire lifecycle of the request
+        stream = dynamic_model_manager.handle_inference_request(
+            model_id=model_id,
+            llama_params=llama_params,
+            method_name="create_chat_completion"
+        )
 
         if request.stream:
             request_id = generate_id("chatcmpl")
             return EventSourceResponse(
-                _chat_completion_stream_generator(model_id, llama, llama_params, request_id),
+                _chat_completion_stream_generator(model_id, stream, request_id),
                 media_type="text/event-stream"
             )
         else:
-            output = llama.create_chat_completion(**llama_params, stream=False)
+            # For non-streaming, get the single result from the async generator
+            output = await stream.__anext__()
+            if "error" in output:
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail=f"Error from model worker: {output['error']}"
+                )
             response = _parse_chat_completion_output(output, model_id, request)
             return response
 

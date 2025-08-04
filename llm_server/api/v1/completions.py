@@ -10,9 +10,9 @@ from llm_server.schemas.completion import (
     CompletionStreamResponse, CompletionStreamChoice, ChoiceLogProbs
 )
 from llm_server.schemas.common import UsageInfo
-# Updated dependency import
-from llm_server.api.deps import get_authenticated_user, validate_model_id, get_model_instance_from_id
+from llm_server.api.deps import get_authenticated_user, validate_model_id
 from llm_server.core.utils import generate_id
+from llm_server.core.llm_manager import dynamic_model_manager
 from llama_cpp import Llama, LlamaGrammar
 
 router = APIRouter(tags=["Completions"])
@@ -76,25 +76,30 @@ def _parse_completion_output(output: dict, model_id: str, request: CompletionReq
         usage=usage
     )
 
-# --- Add _completion_stream_generator here ---
 async def _completion_stream_generator(
     model_id: str,
-    llama_instance: Llama,
-    llama_params: dict,
+    stream: AsyncGenerator[dict, None],
     request_id: str
 ) -> AsyncGenerator[str, None]:
-    stream = llama_instance.create_completion(**llama_params, stream=True)
+    """
+    Yields formatted server-sent events from an async stream of chunks.
+    """
     completion_start_time = int(time.time())
-    for output_chunk in stream:
+    async for output_chunk in stream:
         choices = []
-        for choice_data in output_chunk.get("choices", []):
-             stream_choice = CompletionStreamChoice(
-                index=choice_data.get("index", 0),
-                text=choice_data.get("text", ""),
-                logprobs=None,
-                finish_reason=choice_data.get("finish_reason")
-             )
-             choices.append(stream_choice)
+        if "choices" in output_chunk and isinstance(output_chunk["choices"], list):
+            for choice_data in output_chunk["choices"]:
+                stream_choice = CompletionStreamChoice(
+                    index=choice_data.get("index", 0),
+                    text=choice_data.get("text", ""),
+                    logprobs=None,
+                    finish_reason=choice_data.get("finish_reason")
+                )
+                choices.append(stream_choice)
+
+        if not choices:
+            continue
+
         chunk = CompletionStreamResponse(
             id=request_id,
             object="text_completion.chunk",
@@ -102,50 +107,46 @@ async def _completion_stream_generator(
             model=model_id,
             choices=choices,
         )
-        yield f"data: {chunk.model_dump_json()}\n\n"
+        yield f"data: {chunk.model_dump_json(exclude_unset=True)}\n\n"
     yield "data: [DONE]\n\n"
 
 
-# --- Modified Endpoint ---
 @router.post(
     "/completions",
-    response_model=CompletionResponse, # For non-streaming
-    dependencies=[Depends(get_authenticated_user)] # Apply authentication dependency
+    response_model=CompletionResponse,
+    dependencies=[Depends(get_authenticated_user)]
 )
 async def create_completion(
-    request: CompletionRequest, # Request body is parsed here
-    # request_object: Request # Optional: Inject raw request if needed
+    request: CompletionRequest,
 ):
     """
     Creates a completion for the provided prompt and parameters.
-    Supports both streaming and non-streaming responses.
     """
-    # 1. Validate the model ID from the request body
     model_id = validate_model_id(request.model)
-
-    # 2. Get the Llama instance using the validated model_id
-    llama = get_model_instance_from_id(model_id) # Handles exceptions
-
-    # --- The rest of the endpoint logic ---
-
-    if request.n is not None and request.n > 1:
-         print(f"Warning: Requesting n={request.n} choices. llama-cpp-python might only generate one.")
-    if request.best_of is not None and request.best_of > 1:
-         print(f"Warning: Requesting best_of={request.best_of}. Not directly supported.")
 
     try:
         llama_params = _map_request_to_llama_params(request)
+        llama_params["stream"] = request.stream
+
+        stream = dynamic_model_manager.handle_inference_request(
+            model_id=model_id,
+            llama_params=llama_params,
+            method_name="create_completion"
+        )
 
         if request.stream:
             request_id = generate_id("cmpl")
-            # Pass the retrieved model_id and llama instance
             return EventSourceResponse(
-                _completion_stream_generator(model_id, llama, llama_params, request_id),
+                _completion_stream_generator(model_id, stream, request_id),
                 media_type="text/event-stream"
             )
         else:
-            output = llama.create_completion(**llama_params, stream=False)
-            # Pass the validated model_id for parsing
+            output = await stream.__anext__()
+            if "error" in output:
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail=f"Error from model worker: {output['error']}"
+                )
             response = _parse_completion_output(output, model_id, request)
             return response
 

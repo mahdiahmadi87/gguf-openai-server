@@ -5,6 +5,7 @@ pydantic-settings>=2.0.0
 llama-cpp-python>=0.2.50 # Or newer. Check compatibility!
 python-dotenv>=1.0.0
 sse-starlette>=1.6.5     # For easy Server-Sent Events streaming
+psutil>=5.9.0            # For system information (CPU affinity)
 
 # Optional for Nice-to-Haves
 # slowapi>=0.1.8         # For rate limiting

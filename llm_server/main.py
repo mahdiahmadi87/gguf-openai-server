@@ -5,11 +5,11 @@ from fastapi import FastAPI, Request, status
 from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware # Optional: If needed for frontend access
-from contextlib import asynccontextmanager # <-- Import asynccontextmanager
+from contextlib import asynccontextmanager
 
 from config.settings import settings
 from llm_server.core.api_key_manager import load_api_keys
-from llm_server.api.v1 import chat_completions, completions, models, admin # <-- Import admin
+from llm_server.api.v1 import chat_completions, completions, models, admin
 
 # --- Logging Setup ---
 logging.basicConfig(level=settings.LOG_LEVEL.upper())
@@ -20,11 +20,16 @@ logger.info("Starting logger...")
 async def lifespan(app: FastAPI):
     # --- Code to run on startup ---
     logger.info("Server is starting up...")
+
     # Load user API keys from the persistent file
     load_api_keys()
+
     yield
-    # --- Code to run on shutdown (if any) ---
+
+    # --- Code to run on shutdown ---
     logger.info("Server is shutting down...")
+    # No need to stop models, as they are temporary and self-terminate.
+    # No need to set CPU affinity for the main process, to maximize cores for workers.
 
 
 # --- FastAPI App Initialization ---
