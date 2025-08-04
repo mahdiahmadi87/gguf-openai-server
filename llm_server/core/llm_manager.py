@@ -86,7 +86,9 @@ class DynamicModelManager:
     Manages the dynamic, on-demand spawning of model workers for each
     inference request.
     """
-    async def handle_inference_request(self, model_id: str, llama_params: dict) -> AsyncGenerator[Dict, None]:
+    async def handle_inference_request(
+        self, model_id: str, llama_params: dict, method_name: str
+    ) -> AsyncGenerator[Dict, None]:
         """
         Handles an inference request by spawning a temporary worker process.
         This is an async generator that yields results from the worker.
@@ -115,7 +117,7 @@ class DynamicModelManager:
             logger.info(f"Spawned worker {worker_process.pid} for task {task_id} on cores {sorted(list(allocated_cores))}.")
 
             # 4. Send the task to the worker
-            task_queue.put((task_id, "create_chat_completion", llama_params))
+            task_queue.put((task_id, method_name, llama_params))
 
             # 5. Yield results from the queue
             is_stream = llama_params.get("stream", False)
