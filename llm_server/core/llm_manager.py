@@ -98,15 +98,17 @@ class DynamicModelManager:
         worker_process = None
 
         try:
-            # 1. Allocate CPU cores
-            allocated_cores = cpu_manager.allocate(num_cores=4)
-            if allocated_cores is None:
-                raise RuntimeError("Could not allocate CPU cores for a new worker process.")
-
-            # 2. Get model config
+            # 1. Get model config to determine required threads
             model_config = get_model_config(model_id)
             if not model_config:
                 raise ValueError(f"Model configuration not found for model_id: {model_id}")
+
+            num_threads_needed = model_config.n_threads
+
+            # 2. Allocate CPU cores based on the model's n_threads
+            allocated_cores = cpu_manager.allocate(num_cores=num_threads_needed)
+            if allocated_cores is None:
+                raise RuntimeError(f"Could not allocate {num_threads_needed} CPU cores for a new worker process.")
 
             # 3. Create queues and spawn worker
             task_queue = multiprocessing.Queue()
