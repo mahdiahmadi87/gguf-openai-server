@@ -27,18 +27,16 @@ class ModelWorkerProcess(multiprocessing.Process):
     A single-use worker process that loads a model, performs one inference task,
     and then exits.
     """
-    def __init__(self, model_config: ModelInfo, task_queue: multiprocessing.Queue, result_queue: multiprocessing.Queue):
+    def __init__(self, model_config: ModelInfo, core_set: Set[int], task_queue: multiprocessing.Queue, result_queue: multiprocessing.Queue):
         super().__init__()
         self.model_config = model_config
+        self.core_set = core_set
         self.task_queue = task_queue
         self.result_queue = result_queue
 
     def run(self):
         # 1. Set CPU Affinity for this worker process
-        start_core = self.model_config.thread_offset
-        num_threads = self.model_config.n_threads
-        cpu_cores = set(range(start_core, start_core + num_threads))
-        set_cpu_affinity(cpu_cores)
+        set_cpu_affinity(self.core_set)
 
         # 2. Load the Llama model
         try:
@@ -94,31 +92,27 @@ class DynamicModelManager:
         This is an async generator that yields results from the worker.
         """
         task_id = str(uuid.uuid4())
-        start_core = None
+        allocated_cores = None
         worker_process = None
 
         try:
             # 1. Allocate CPU cores
-            start_core = cpu_manager.allocate(num_cores=4)
-            if start_core is None:
+            allocated_cores = cpu_manager.allocate(num_cores=4)
+            if allocated_cores is None:
                 raise RuntimeError("Could not allocate CPU cores for a new worker process.")
 
-            # 2. Get model config and override thread_offset
+            # 2. Get model config
             model_config = get_model_config(model_id)
             if not model_config:
                 raise ValueError(f"Model configuration not found for model_id: {model_id}")
-            
-            # Create a copy to avoid modifying the global settings object
-            temp_model_config = model_config.copy(deep=True)
-            temp_model_config.thread_offset = start_core
 
             # 3. Create queues and spawn worker
             task_queue = multiprocessing.Queue()
             result_queue = multiprocessing.Queue()
             
-            worker_process = ModelWorkerProcess(temp_model_config, task_queue, result_queue)
+            worker_process = ModelWorkerProcess(model_config, allocated_cores, task_queue, result_queue)
             worker_process.start()
-            logger.info(f"Spawned worker {worker_process.pid} for task {task_id} on cores {start_core}-{start_core+3}.")
+            logger.info(f"Spawned worker {worker_process.pid} for task {task_id} on cores {sorted(list(allocated_cores))}.")
 
             # 4. Send the task to the worker
             task_queue.put((task_id, "create_chat_completion", llama_params))
@@ -158,8 +152,8 @@ class DynamicModelManager:
                 worker_process.terminate()
                 worker_process.join()
 
-            if start_core is not None:
-                cpu_manager.release(start_core, num_cores=4)
+            if allocated_cores is not None:
+                cpu_manager.release(allocated_cores)
 
             logger.info(f"Cleaned up resources for task {task_id}.")
 

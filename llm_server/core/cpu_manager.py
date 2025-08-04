@@ -29,64 +29,46 @@ class CPUManager:
             self._initialized = True
             logger.info(f"CPUManager initialized with {self.num_cores} logical cores.")
 
-    def _find_contiguous_cores(self, num_cores_needed: int) -> Optional[int]:
-        """Finds a contiguous block of free cores."""
-        contiguous_count = 0
-        start_index = -1
-        for i in range(self.num_cores):
-            if not self.core_map[i]:
-                if contiguous_count == 0:
-                    start_index = i
-                contiguous_count += 1
-                if contiguous_count == num_cores_needed:
-                    return start_index
-            else:
-                contiguous_count = 0
-                start_index = -1
-        return None # No contiguous block found
-
-    def allocate(self, num_cores: int = 4) -> Optional[int]:
+    def allocate(self, num_cores: int = 4) -> Optional[Set[int]]:
         """
-        Allocates a contiguous block of CPU cores.
+        Allocates a set of CPU cores.
 
         Args:
-            num_cores (int): The number of contiguous cores to allocate.
+            num_cores (int): The number of cores to allocate.
 
         Returns:
-            Optional[int]: The starting core ID if allocation is successful, otherwise None.
+            Optional[Set[int]]: A set of core IDs if allocation is successful, otherwise None.
         """
         with self._lock:
-            start_core = self._find_contiguous_cores(num_cores)
-            if start_core is not None:
-                # Mark the cores as busy
-                for i in range(start_core, start_core + num_cores):
-                    self.core_map[i] = True
-                logger.info(f"Allocated {num_cores} cores starting from CPU {start_core}.")
-                return start_core
+            free_cores = [i for i, is_busy in enumerate(self.core_map) if not is_busy]
+
+            if len(free_cores) >= num_cores:
+                allocated_cores = set(free_cores[:num_cores])
+                for core_id in allocated_cores:
+                    self.core_map[core_id] = True
+                logger.info(f"Allocated {num_cores} cores: {sorted(list(allocated_cores))}")
+                return allocated_cores
             else:
-                logger.warning(f"Failed to allocate {num_cores} contiguous cores. No free block found.")
+                logger.warning(f"Failed to allocate {num_cores} cores. Only {len(free_cores)} free.")
                 return None
 
-    def release(self, start_core: int, num_cores: int = 4):
+    def release(self, core_ids: Set[int]):
         """
-        Releases a block of CPU cores.
+        Releases a set of CPU cores.
 
         Args:
-            start_core (int): The starting core ID of the block to release.
-            num_cores (int): The number of cores in the block.
+            core_ids (Set[int]): The set of core IDs to release.
         """
-        if start_core is None:
+        if not core_ids:
             return
 
         with self._lock:
-            if start_core + num_cores > self.num_cores:
-                logger.error(f"Cannot release cores: start_core {start_core} + num_cores {num_cores} exceeds total cores {self.num_cores}.")
-                return
-
-            # Mark the cores as free
-            for i in range(start_core, start_core + num_cores):
-                self.core_map[i] = False
-            logger.info(f"Released {num_cores} cores starting from CPU {start_core}.")
+            for core_id in core_ids:
+                if 0 <= core_id < self.num_cores:
+                    self.core_map[core_id] = False
+                else:
+                    logger.warning(f"Attempted to release an invalid core ID: {core_id}")
+            logger.info(f"Released {len(core_ids)} cores: {sorted(list(core_ids))}")
 
 # --- Global Singleton Instance ---
 cpu_manager = CPUManager()

@@ -29,8 +29,8 @@ def set_main_process_cpu_affinity():
         main_process_cores = cpu_manager.allocate(num_cores=2)
 
         if main_process_cores is not None:
-            core_set = set(range(main_process_cores, main_process_cores + 2))
-            set_cpu_affinity(core_set)
+            # The allocated cores are already a set, so we can use it directly
+            set_cpu_affinity(main_process_cores)
         else:
             logger.warning("Could not allocate dedicated cores for the main server process. It will run on any available core.")
 
