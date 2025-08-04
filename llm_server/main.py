@@ -5,26 +5,69 @@ from fastapi import FastAPI, Request, status
 from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware # Optional: If needed for frontend access
-from contextlib import asynccontextmanager # <-- Import asynccontextmanager
+from contextlib import asynccontextmanager
+import psutil
 
-from config.settings import settings
+from config.settings import settings, get_available_model_ids, get_model_config
 from llm_server.core.api_key_manager import load_api_keys
-from llm_server.api.v1 import chat_completions, completions, models, admin # <-- Import admin
+from llm_server.api.v1 import chat_completions, completions, models, admin
+from llm_server.core.llm_manager import model_manager, set_cpu_affinity
 
 # --- Logging Setup ---
 logging.basicConfig(level=settings.LOG_LEVEL.upper())
 logger = logging.getLogger(settings.APP_NAME)
 logger.info("Starting logger...")
 
+def set_main_process_cpu_affinity():
+    """Sets the CPU affinity for the main FastAPI server process."""
+    try:
+        total_cores = psutil.cpu_count(logical=True)
+        all_cores = set(range(total_cores))
+
+        # Determine cores used by model workers
+        model_cores = set()
+        model_ids = get_available_model_ids()
+        for model_id in model_ids:
+            model_config = get_model_config(model_id)
+            if model_config:
+                start = model_config.thread_offset
+                end = start + model_config.n_threads
+                model_cores.update(range(start, end))
+
+        # Determine cores available for the main process
+        available_cores = all_cores - model_cores
+
+        if not available_cores:
+            logger.warning("No exclusive CPU cores available for the main server process. Affinity will not be set.")
+            return
+
+        pid = os.getpid()
+        set_cpu_affinity(available_cores)
+        logger.info(f"[PID {pid}] Main server process affinity set to cores: {available_cores}")
+
+    except Exception as e:
+        logger.error(f"Failed to set main process CPU affinity. Error: {e}", exc_info=True)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # --- Code to run on startup ---
     logger.info("Server is starting up...")
+
+    # Set CPU affinity for the main process BEFORE starting model workers
+    set_main_process_cpu_affinity()
+
+    # Start the model worker processes
+    model_manager.start_models()
+
     # Load user API keys from the persistent file
     load_api_keys()
+
     yield
-    # --- Code to run on shutdown (if any) ---
+
+    # --- Code to run on shutdown ---
     logger.info("Server is shutting down...")
+    model_manager.stop_models()
 
 
 # --- FastAPI App Initialization ---
