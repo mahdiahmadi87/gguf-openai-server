@@ -13,7 +13,6 @@ from llm_server.schemas.common import UsageInfo
 from llm_server.api.deps import get_authenticated_user, validate_model_id
 from llm_server.core.utils import generate_id
 from llm_server.core.llm_manager import dynamic_model_manager
-from asyncio import anext
 from llama_cpp import Llama, LlamaGrammar
 
 router = APIRouter(tags=["Completions"])
@@ -142,7 +141,7 @@ async def create_completion(
                 media_type="text/event-stream"
             )
         else:
-            output = await anext(stream)
+            output = await stream.__anext__()
             if "error" in output:
                 raise HTTPException(
                     status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

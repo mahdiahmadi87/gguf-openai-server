@@ -3,7 +3,6 @@ import time
 import json
 import base64 # <-- Import base64
 import re     # <-- Import re
-from asyncio import anext
 from fastapi import APIRouter, Depends, HTTPException, status, Request
 from sse_starlette.sse import EventSourceResponse
 from typing import AsyncGenerator, List, Dict, Any, Union, Optional # <-- Add Dict, Any, Union, Optional
@@ -239,7 +238,8 @@ async def create_chat_completion(
         # The dynamic manager handles the entire lifecycle of the request
         stream = dynamic_model_manager.handle_inference_request(
             model_id=model_id,
-            llama_params=llama_params
+            llama_params=llama_params,
+            method_name="create_chat_completion"
         )
 
         if request.stream:
@@ -250,7 +250,7 @@ async def create_chat_completion(
             )
         else:
             # For non-streaming, get the single result from the async generator
-            output = await anext(stream)
+            output = await stream.__anext__()
             if "error" in output:
                 raise HTTPException(
                     status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
