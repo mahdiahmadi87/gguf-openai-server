@@ -6,45 +6,20 @@ from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware # Optional: If needed for frontend access
 from contextlib import asynccontextmanager
-import psutil
 
-from config.settings import settings, get_available_model_ids, get_model_config
+from config.settings import settings
 from llm_server.core.api_key_manager import load_api_keys
 from llm_server.api.v1 import chat_completions, completions, models, admin
-from llm_server.core.llm_manager import set_cpu_affinity
-from llm_server.core.cpu_manager import cpu_manager
 
 # --- Logging Setup ---
 logging.basicConfig(level=settings.LOG_LEVEL.upper())
 logger = logging.getLogger(settings.APP_NAME)
 logger.info("Starting logger...")
 
-def set_main_process_cpu_affinity():
-    """
-    Allocates dedicated cores for the main server process using the CPUManager
-    and sets the process affinity.
-    """
-    try:
-        # Allocate 2 cores for the main server process, if available
-        main_process_cores = cpu_manager.allocate(num_cores=2)
-
-        if main_process_cores is not None:
-            # The allocated cores are already a set, so we can use it directly
-            set_cpu_affinity(main_process_cores)
-        else:
-            logger.warning("Could not allocate dedicated cores for the main server process. It will run on any available core.")
-
-    except Exception as e:
-        logger.error(f"Failed to set main process CPU affinity. Error: {e}", exc_info=True)
-
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # --- Code to run on startup ---
     logger.info("Server is starting up...")
-
-    # Set CPU affinity for the main process. This also reserves the cores in the manager.
-    set_main_process_cpu_affinity()
 
     # Load user API keys from the persistent file
     load_api_keys()
@@ -54,6 +29,7 @@ async def lifespan(app: FastAPI):
     # --- Code to run on shutdown ---
     logger.info("Server is shutting down...")
     # No need to stop models, as they are temporary and self-terminate.
+    # No need to set CPU affinity for the main process, to maximize cores for workers.
 
 
 # --- FastAPI App Initialization ---
