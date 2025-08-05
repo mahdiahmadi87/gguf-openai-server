@@ -2,8 +2,11 @@
 
 # Base stage for common setup
 FROM nvidia/cuda:12.2.0-base-ubuntu22.04 AS base
-RUN apt-get update \
-    && apt-get install -y python3 python3-venv python3-pip wget gnupg2 \
+# Install base dependencies with retries and HTTPS support
+RUN apt-get update --fix-missing \
+    && apt-get install -y --no-install-recommends \
+        apt-transport-https ca-certificates gnupg2 wget \
+        python3 python3-venv python3-pip \
     && rm -rf /var/lib/apt/lists/*
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
 WORKDIR /app
