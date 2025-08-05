@@ -1,7 +1,12 @@
 # syntax=docker/dockerfile:1.4
 
 # Base stage for common setup
-FROM python:3.12-slim AS base
+FROM nvidia/cuda:12.2.0-base-ubuntu22.04 AS base
+
+# Install Python 3, venv & pip
+RUN apt-get update && apt-get install -y \
+    python3 python3-venv python3-pip \
+  && rm -rf /var/lib/apt/lists/*
 
 # Set environment variables for Python
 ENV PYTHONDONTWRITEBYTECODE=1 \
@@ -41,14 +46,6 @@ RUN python -m venv .venv && \
     .venv/bin/pip install -r requirements.txt
 
 RUN CMAKE_ARGS="-DGGML_CUDA=on" FORCE_CMAKE=1 pip install --no-cache-dir --force-reinstall llama-cpp-python --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cu128
-    
-# --- Final stage ---
-FROM python:3.12-slim AS final
-
-# Install runtime dependencies (ensure libgomp present)
-RUN apt-get update --yes && \
-    apt-get install --yes --no-install-recommends libgomp1 && \
-    rm -rf /var/lib/apt/lists/*
 
 # Create non-root user
 RUN useradd -m appuser
