@@ -2,34 +2,36 @@
 
 # Base stage for common setup
 FROM nvidia/cuda:12.2.0-base-ubuntu22.04 AS base
-RUN apt-get update && apt-get install -y python3 python3-venv python3-pip && rm -rf /var/lib/apt/lists/*
+RUN apt-get update \
+    && apt-get install -y python3 python3-venv python3-pip wget gnupg2 \
+    && rm -rf /var/lib/apt/lists/*
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
 WORKDIR /app
 
-# Builder stage: install build deps, CUDA toolkit & create venv
+# Builder stage: install build deps, correct NVIDIA CUDA repo & create venv
 FROM base AS builder
-# Install compiler, CMake, libgomp and wget
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential libgomp1 cmake wget \
-  && rm -rf /var/lib/apt/lists/*
+# Install compiler, CMake, libgomp
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+         build-essential libgomp1 cmake \
+    && rm -rf /var/lib/apt/lists/*
 
-# Add NVIDIA CUDA repository and install toolkit 12.8
-RUN wget https://developer.download.nvidia.com/compute/cuda/repos/debian12/x86_64/cuda-keyring_1.1-1_all.deb && \
-    dpkg -i cuda-keyring_1.1-1_all.deb && \
-    apt-get update && \
-    apt-get install -y cuda-toolkit-12-8 && \
-    rm -rf /var/lib/apt/lists/*
+# Add NVIDIA CUDA repository for Ubuntu 22.04 and install toolkit 12.8
+RUN wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2204/x86_64/cuda-keyring_1.1-1_all.deb \
+    && dpkg -i cuda-keyring_1.1-1_all.deb \
+    && apt-get update \
+    && apt-get install -y cuda-toolkit-12-8 \
+    && rm -rf /var/lib/apt/lists/* cuda-keyring_1.1-1_all.deb
 
 # Set CUDA environment for build
 ENV PATH="/usr/local/cuda/bin:${PATH}"
 ENV CUDAToolkit_ROOT="/usr/local/cuda"
 
 # Create virtual environment & install Python deps
-WORKDIR /app
 COPY requirements.txt ./
-RUN python3 -m venv .venv && \
-    .venv/bin/pip install --upgrade pip && \
-    .venv/bin/pip install -r requirements.txt
+RUN python3 -m venv .venv \
+    && .venv/bin/pip install --upgrade pip setuptools wheel \
+    && .venv/bin/pip install -r requirements.txt
 
 # Install llama-cpp-python with CUDA support
 RUN CMAKE_ARGS="-DGGML_CUDA=on" FORCE_CMAKE=1 \
