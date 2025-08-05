@@ -2,68 +2,49 @@
 
 # Base stage for common setup
 FROM nvidia/cuda:12.2.0-base-ubuntu22.04 AS base
-
-# Install Python 3, venv & pip
-RUN apt-get update && apt-get install -y \
-    python3 python3-venv python3-pip \
-  && rm -rf /var/lib/apt/lists/*
-
-# Set environment variables for Python
-ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1
-
+RUN apt-get update && apt-get install -y python3 python3-venv python3-pip && rm -rf /var/lib/apt/lists/*
+ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
 WORKDIR /app
 
-# --- Builder stage ---
+# Builder stage: install build deps, CUDA toolkit & create venv
 FROM base AS builder
-
-# Install build-time dependencies (including libgomp for llama_cpp compilation)
-# RUN apt-get update && apt-get install -y --no-install-recommends \
-#     build-essential \
-#     libopenblas-dev \
-#     libstdc++6 \
-#     libgomp1 \
-#     git \
-#     cmake \
-#     curl \
-#     wget \
-#     gnupg && \
-#     rm -rf /var/lib/apt/lists/*
-
+# Install compiler, CMake, libgomp and wget
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential libgomp1 \
+    build-essential libgomp1 cmake wget \
   && rm -rf /var/lib/apt/lists/*
 
-
+# Add NVIDIA CUDA repository and install toolkit 12.8
 RUN wget https://developer.download.nvidia.com/compute/cuda/repos/debian12/x86_64/cuda-keyring_1.1-1_all.deb && \
     dpkg -i cuda-keyring_1.1-1_all.deb && \
     apt-get update && \
-    apt-get install -y cuda-toolkit-12-8
+    apt-get install -y cuda-toolkit-12-8 && \
+    rm -rf /var/lib/apt/lists/*
 
+# Set CUDA environment for build
 ENV PATH="/usr/local/cuda/bin:${PATH}"
 ENV CUDAToolkit_ROOT="/usr/local/cuda"
 
-# Copy requirements and install Python deps
+# Create virtual environment & install Python deps
+WORKDIR /app
 COPY requirements.txt ./
-RUN python -m venv .venv && \
+RUN python3 -m venv .venv && \
     .venv/bin/pip install --upgrade pip && \
     .venv/bin/pip install -r requirements.txt
 
-RUN CMAKE_ARGS="-DGGML_CUDA=on" FORCE_CMAKE=1 pip install --no-cache-dir --force-reinstall llama-cpp-python --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cu122
+# Install llama-cpp-python with CUDA support
+RUN CMAKE_ARGS="-DGGML_CUDA=on" FORCE_CMAKE=1 \
+    .venv/bin/pip install --no-cache-dir --force-reinstall llama-cpp-python \
+      --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cu122
 
-# Create non-root user
+# Final stage: copy venv & app code, drop to non-root
+FROM base AS final
+COPY --from=builder /app/.venv /app/.venv
 RUN useradd -m appuser
 USER appuser
-
 WORKDIR /app
 ENV PATH="/app/.venv/bin:$PATH"
-
-# Copy venv and app code
-COPY --from=builder /app/.venv /app/.venv
-COPY config/ ./config/
-COPY llm_server/ ./llm_server/
-COPY models/ ./models/
-# COPY requirements.txt .
-
+COPY config/      ./config/
+COPY llm_server/  ./llm_server/
+COPY models/      ./models/
 EXPOSE 8000
 CMD ["uvicorn", "llm_server.main:app", "--host", "0.0.0.0", "--port", "8000"]
